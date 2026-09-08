@@ -1,0 +1,23 @@
+{
+  "name": "Familia Castro Trips",
+  "short_name": "Castro Trips",
+  "description": "Caderno de despesas das viagens da Família Castro",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0a3d2e",
+  "theme_color": "#0a3d2e",
+  "lang": "pt",
+  "icons": [
+    {
+      "src": "familia.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "familia.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
