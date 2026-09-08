@@ -1,10 +1,6 @@
 import type { AppData } from "@/lib/types";
 
-export type CloudConfig = {
-  url: string;
-  key: string;
-  rowId: string;
-};
+export type CloudConfig = { url: string; key: string; rowId: string };
 
 export const DEFAULT_CLOUD: CloudConfig = {
   url: process.env.NEXT_PUBLIC_SUPABASE_URL || "https://qnscwppgljobelplgbkp.supabase.co",
@@ -34,36 +30,17 @@ export function writeCloudConfig(config: CloudConfig) {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
-function cloudHeaders(key: string, extra?: HeadersInit): HeadersInit {
-  const trimmed = key.trim();
-  const headers: Record<string, string> = {
-    apikey: trimmed,
-    "Content-Type": "application/json",
-  };
-  if (trimmed.startsWith("eyJ")) {
-    headers.Authorization = `Bearer ${trimmed}`;
-  }
-  return { ...headers, ...(extra as Record<string, string> | undefined) };
-}
-
-function cloudErrorMessage(status: number, body: string) {
-  const snippet = body.replace(/\s+/g, " ").slice(0, 180);
-  if (status === 401 || status === 403) {
-    if (/invalid jwt/i.test(body) || /sb_publishable/i.test(body)) {
-      return "Esta chave não é JWT. Em Câmbios cola a Publishable (começa por sb_publishable_).";
-    }
-    return snippet
-      ? `Supabase recusou a chave (${status}). ${snippet}`
-      : "Chave do Supabase inválida. Em API Keys abre «Publishable and secret» e cola a Publishable.";
-  }
-  return snippet || `Supabase ${status}`;
+function headersFor(key: string): Record<string, string> {
+  const k = key.trim();
+  const h: Record<string, string> = { apikey: k, "Content-Type": "application/json" };
+  if (k.startsWith("eyJ")) h.Authorization = `Bearer ${k}`;
+  return h;
 }
 
 async function sbFetch(config: CloudConfig, path: string, opts: RequestInit = {}) {
-  const url = config.url.replace(/\/$/, "");
-  return fetch(`${url}${path}`, {
+  return fetch(`${config.url.replace(/\/$/, "")}${path}`, {
     ...opts,
-    headers: cloudHeaders(config.key, opts.headers),
+    headers: { ...headersFor(config.key), ...(opts.headers as Record<string, string>) },
   });
 }
 
@@ -73,25 +50,24 @@ export async function loadFromCloud(config = readCloudConfig()): Promise<AppData
     config,
     `/rest/v1/fct_trips?id=eq.${encodeURIComponent(config.rowId)}&select=data`,
   );
-  if (!res.ok) {
-    throw new Error(cloudErrorMessage(res.status, await res.text()));
-  }
+  if (!res.ok) throw new Error((await res.text()) || `Supabase ${res.status}`);
   const rows = (await res.json()) as { data?: AppData }[];
-  if (rows?.[0]?.data?.trips) return rows[0].data;
-  return null;
+  return rows?.[0]?.data?.trips ? rows[0].data! : null;
 }
 
 export async function saveToCloud(data: AppData, config = readCloudConfig()) {
-  if (!config.url || !config.key) {
-    throw new Error("Falta a chave do Supabase.");
-  }
+  if (!config.url || !config.key) throw new Error("Falta a chave do Supabase.");
   const res = await sbFetch(config, "/rest/v1/fct_trips", {
     method: "POST",
     headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({
-      id: config.rowId,
-      data,
-      updated_at: new Date().toISOString(),
-    }),
+    body: JSON.stringify({ id: config.rowId, data, updated_at: new Date().toISOString() }),
   });
-  if (!res.
+  if (!res.ok) throw new Error((await res.text()) || `Supabase ${res.status}`);
+}
+
+export async function seedCloudIfEmpty(data: AppData, config = readCloudConfig()) {
+  const existing = await loadFromCloud(config);
+  if (existing) return existing;
+  await saveToCloud(data, config);
+  return data;
+}
